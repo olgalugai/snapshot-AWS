@@ -1,8 +1,11 @@
 import boto3
+import botocore
 import click
 
 session = boto3.Session(profile_name='snapshots')
 ec2 = session.resource('ec2')
+
+
 
 
 @click.group()
@@ -22,7 +25,7 @@ def snapshots():
     """Commands for snapshots"""
 
 @snapshots.command('list')
-def list_volumes():
+def list_snapshots():
     "List all EC2 volumes"
     instances = []
     for i in ec2.instances.all():
@@ -60,26 +63,38 @@ def list_instances():
         )))
     return
 
+def has_pending_snapshot(volume):
+    snapshots = list(volumes.snapshots.all())
+    return snapshots and snapshots[0].state == 'pending'
+
+
 @instances.command('snapshot', help="Create snapshots for all volumes")
 def create_snapshot():
     for i in ec2.instances.all():
         i.stop()
         i.wait_until_stopped()
         for v in i.volumes.all():
+            if has_pending_snapshot(volume):
+                print(f'Skipping {v} as it is already in progress')
+                continue
             print('Creating snapshots for {0}'.format(v.id))
             v.create_snapshot(Description="Created by the Python script")
         i.start()
         print('Job\'s done!')
     return
-
-
+    
+    
 @instances.command('stop')
 def stop_instances():
     "Stop all instances"
     instances = ec2.instances.all()
     for i in instances:
         print('Stopping {0}...'.format(i.id))
-        i.stop()
+        try:
+            i.stop()
+        except botocore.exceptions.ClientError as e:
+            print(f'Could not start {i.id} + str(e)')
+            continue
     return
 
 @instances.command('start')
@@ -91,6 +106,6 @@ def start_instances():
         i.start()
     return
 
+
 if __name__ == '__main__':
     cli()
-
